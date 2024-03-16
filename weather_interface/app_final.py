@@ -101,7 +101,7 @@ if fetch_d:
         lon = st.number_input("Enter Longitude", format="%f")
     
     data = []
-    year = st.multiselect("Select years", range(2005, 2022))
+    year = st.multiselect("Select years", range(1998, 2023))
     if st.checkbox("Start Fetching"):
         for yr in year:
             st.write(f"Fetching data for {yr}...")

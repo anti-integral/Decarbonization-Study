@@ -263,3 +263,50 @@ def finalize(df_res, scenario):
 
     return df_res
 
+
+def calculate_re_production(weather_data):
+    """
+    Calculate renewable energy production based on weather forecasts
+    and technical specifications
+    """
+    # Create copy of data to avoid modifying original
+    df = weather_data.copy()
+    
+    # PV calculations
+    n_inv = 0.95  # Inverter efficiency
+    n_b = 1.00    # Battery efficiency
+    n_r = 0.225   # Rated solar cell efficiency
+    beta = -0.0037  # Temperature Coefficient of Efficiency
+    A_pv = 3.1    # Area of each module (m2)
+    NOCT = 44     # Nominal Operating Cell Temperature (°C)
+    P_rated_pv = 0.7  # Power rating of PV panel (kW)
+    
+    # Calculate cell temperature
+    df['Tcell'] = df['temperature'] + 1 * (NOCT-20)/800
+    df['Tc'] = (1 - beta * (df['Tcell'] - 25))
+    
+    # Calculate PV power output per panel
+    df['Ppv'] = (n_inv * n_b * n_r * df['Tc'] * A_pv * df['dni']) / 1000  # Convert to kW
+    df['Ppv'] = df['Ppv'].clip(lower=0, upper=P_rated_pv)  # Cannot exceed rating or be negative
+    
+    # Wind calculations
+    rho = 1.225   # Air density (kg/m3)
+    A_wind = 11310  # Rotor swept area (m2)
+    Cp = 0.28     # Power coefficient
+    P_rated_wind = 2500  # Power rating of wind turbine (kW)
+    
+    # Calculate wind power output per turbine (in kW)
+    df['Pw'] = (0.5 * rho * A_wind * df['wind_speed']**3 * Cp) / 1000
+    df['Pw'] = df['Pw'].clip(lower=0, upper=P_rated_wind)  # Cannot exceed rating or be negative
+    
+    # CSP calculations
+    A_csp = 4047  # Area of solar collector (m2)
+    n_sc = 0.30   # Efficiency of solar collector
+    CF = 0.51     # Capacity factor
+    P_rated_csp = 200  # Power rating of CSP unit (kW)
+    
+    # Calculate CSP power output per unit
+    df['Pcs'] = (A_csp * df['dni'] * n_sc * CF) / 24000  # Divide by 24000 to convert from daily to hourly kW
+    df['Pcs'] = df['Pcs'].clip(lower=0, upper=P_rated_csp)  # Cannot exceed rating or be negative
+    
+    return df

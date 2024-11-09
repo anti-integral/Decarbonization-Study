@@ -9,71 +9,14 @@ from dash.dependencies import Input, Output, State
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from main_opt import run_optimization, process_results
-from utility import load_preset_data
+from utility import load_preset_data, calculate_re_production
+from weather_forecast import WeatherForecast
+from styles import *
 from IPython import embed
 
 app = dash.Dash(__name__)
-
-# Define a dictionary to map actual column names to display names
-column_name_map = {
-    'Solution_Index': 'Solution',
-    'n_wt': 'Wind Turbines',
-    'n_csp': 'CSP Units',
-    'n_pv': 'PV Panels',
-    'n_batt': 'Batteries',
-    'Total_Energy_Cost': 'Total Cost ($)',
-    'Total_CO2': 'Total CO2 (ton)',
-    'Demand': 'Demand (kWh)',
-    'Util_Energy': 'Utility Energy (kWh)',
-    'Batt_Charge': 'Battery Charge (kWh)',
-    'Total_RE_Prod': 'Total RE Prod. (kWh)',
-    'RE_Cost': 'RE Cost ($)',
-    'Util_Cost': 'Utility Cost ($)',
-    'Batt_Cost': 'Battery Cost ($)',
-    'RE_CO2': 'RE CO2 (ton)',
-    'Util_CO2': 'Utility CO2 (ton)',
-    'Batt_CO2': 'Battery CO2 (ton)',
-    'RE/Demand': 'RE/Demand',
-    'RE+BU/Demand': '(RE+BU)/Demand'
-}
-
-upload_style = {
-    'width': '100%',
-    'height': '75px',
-    'lineHeight': '60px',
-    'borderWidth': '1px',
-    'borderStyle': 'dashed',
-    'borderRadius': '5px',
-    'textAlign': 'center',
-    'margin': '5px',
-    'fontSize': '0.9em',
-}
-
-dd_style = {
-    'width': '170px',
-    'height': '30px',
-    'fontSize': '0.9em',
-}
-
-cc_style = {
-    'display': 'flex',
-    'justifyContent': 'center',
-    'alignItems': 'center',
-}
-
-small_button_style = {
-    'width': '70%',
-    'height': '75px',
-    'background-color': 'lightblue',
-    'font-size': '10px',
-    'padding': '15px 10px',
-    'margin': '0px',
-    'border': 'none',
-    'border-radius': '3px',
-    'cursor': 'pointer'
-}
-
 
 all_solutions = []
 processed_solutions = pd.DataFrame()
@@ -85,225 +28,470 @@ preset_re_data, preset_demand_data, preset_constants = load_preset_data()
 app.layout = dbc.Container([
     html.H1("Multi-Objective Optimization for Renewable Energy"),
     
-    html.Br(),
-    html.Br(),
+    dcc.Tabs([
 
-    html.Div(className="four columns", children=[
-        dbc.Row([
-            html.Div([
-                html.H4('Upload RE Prod Data'),
-                dbc.Col(dcc.Upload(id='upload-re-data', children=html.Div(['Drag and Drop or Browse Data File', 
-                                #html.A('Select RE Production Data File')
-                                ]), 
-                                style=upload_style, multiple=False)),
-            ], className="mb-4"),
-
-            html.Div([
-                html.H4('Upload Plant Demand Data'),
-                dbc.Col(dcc.Upload(id='upload-demand-data', children=html.Div(['Drag and Drop or Browse Data File', 
-                               #html.A('Select Plant Demand Data File')
-                               ]), 
-                               style=upload_style, multiple=False)),
-            ], className="mb-4 mx-4"),
-
-            html.Div([
-                html.H4('Upload Constants'),
-                dbc.Col(dcc.Upload(id='upload-constants', children=html.Div(['Drag and Drop or Browse Data File', 
-                               #html.A('Select Constants File')
-                               ]), 
-                               style=upload_style, multiple=False)),
-            ], className="mb-4"),
-
-            html.Div([
-                html.H4('Data Sample'),
-                html.Button('Download Data Sample', 
-                    id='download-presets-button', 
-                    style=small_button_style,
-                    n_clicks=0),
-                dcc.Download(id='download-presets'),
-            ], className="mb-4"),
+        dcc.Tab(label='Optimization', children=[
 
             html.Br(),
-            html.Div(id='upload-count', children='Files uploaded: 0', className="mt-3", 
-                     style = {'font-size': '16px', 'color':'blue'}),
+            html.Br(),
 
-        ], style={'display': 'flex', 'justifyContent': 'space-evenly' }, className="justify-content-between" ),
+            html.Div(className="four columns", children=[
+                dbc.Row([
+                    html.Div([
+                        html.H4('Upload RE Prod Data'),
+                        dbc.Col(dcc.Upload(id='upload-re-data', children=html.Div(['Drag and Drop or Browse Data File', 
+                                        #html.A('Select RE Production Data File')
+                                        ]), 
+                                        style=upload_style, multiple=False)),
+                    ], className="mb-4"),
 
-        html.Br(),
-        html.Div(id='upload-status', className="mt-3", style = {'font-size': '14px', 'color':'blue'}),
+                    html.Div([
+                        html.H4('Upload Plant Demand Data'),
+                        dbc.Col(dcc.Upload(id='upload-demand-data', children=html.Div(['Drag and Drop or Browse Data File', 
+                                    #html.A('Select Plant Demand Data File')
+                                    ]), 
+                                    style=upload_style, multiple=False)),
+                    ], className="mb-4 mx-4"),
+
+                    html.Div([
+                        html.H4('Upload Constants'),
+                        dbc.Col(dcc.Upload(id='upload-constants', children=html.Div(['Drag and Drop or Browse Data File', 
+                                    #html.A('Select Constants File')
+                                    ]), 
+                                    style=upload_style, multiple=False)),
+                    ], className="mb-4"),
+
+                    html.Div([
+                        html.H4('Data Sample'),
+                        html.Button('Download Data Sample', 
+                            id='download-presets-button', 
+                            style=small_button_style,
+                            n_clicks=0),
+                        dcc.Download(id='download-presets'),
+                    ], className="mb-4"),
+
+                    html.Br(),
+                    html.Div(id='upload-count', children='Files uploaded: 0', className="mt-3", 
+                            style = {'font-size': '16px', 'color':'blue'}),
+
+                ], style={'display': 'flex', 'justifyContent': 'space-evenly' }, className="justify-content-between" ),
+
+                html.Br(),
+                html.Div(id='upload-status', className="mt-3", style = {'font-size': '14px', 'color':'blue'}),
+
+                dbc.Row([
+                    html.Div([
+                        html.H4('Scenario'),
+                        dbc.Col(dcc.Dropdown(id='scenario-dropdown', 
+                                            style=dd_style,
+                                            options=[{'label': 'Battery Usage', 'value': 'battery'}, 
+                                                    {'label': 'Utility Usage', 'value': 'utility'}
+                                                    ], 
+                                                    value='battery')
+                                ),
+                    ]),
+
+                    html.Div([
+                        html.H4('RE Sources'),
+                        dbc.Col(dcc.Dropdown(id='re-sources-dropdown', 
+                                            style=dd_style,
+                                            options=[
+                                                {'label': 'All (WT, PV, CSP)', 'value': 'all'},
+                                                {'label': 'WT and PV', 'value': 'wt_pv'},
+                                                {'label': 'WT and CSP', 'value': 'wt_csp'},
+                                                {'label': 'PV and CSP', 'value': 'pv_csp'}
+                                            ],
+                                            value='all')
+                                ),
+                    ]),
+
+                    html.Div([
+                        html.H4('Time Granularity'),
+                        dbc.Col(dcc.Dropdown(
+                            id='time-granularity-dropdown', 
+                            style=dd_style,
+                            options=[
+                                {'label': 'Daily', 'value': 'daily'},
+                                {'label': 'Hourly', 'value': 'hourly'}
+                            ],
+                            value='daily'
+                        )),
+                    ]),
+
+                    html.Div([
+                        html.H4('RE Use: Min'),
+                        dbc.Col(dcc.Dropdown(id='re-min', 
+                                            style=dd_style,
+                                            options=[0,0.25,0.5,0.99], 
+                                            value= 0.5)),
+                    ]),
+
+                    html.Div([
+                        html.H4('RE Use: Max'),
+                        dbc.Col(dcc.Dropdown(id='re-max', 
+                                            style=dd_style,
+                                            options=[0.25,0.5,1.0], 
+                                            value= 1.0)),
+                    ]),
+
+                    html.Div([
+                        html.H4('Number of generations'),
+                        dbc.Col(dcc.Dropdown(id='num-gen', 
+                                            style=dd_style,
+                                            options=[25, 50, 100, 200], 
+                                            value= 25)),
+                    ]),
+
+                ], style={'display': 'flex', 'justifyContent': 'center'}), #'space-between'
+            ]),
+            
+            html.Br(),
+            html.Br(),
+            html.Br(),
+            dcc.Loading(
+                    id="loading",
+                    type='default', #"circle",
+                    children=[
+
+                        html.Div([
+                            html.Div(id="loading-output", 
+                                    style = {'font-size': '16px', 'color':'blue'}),
+                            ], style = cc_style
+                        ),
+
+                        html.Br(),
+                        html.Div([
+                            html.Button('Run Optimization', 
+                                        id='run-button', 
+                                        style=main_button_style,
+                                        n_clicks=0),
+                            ], style  = cc_style
+                        ),
+
+                        html.Br(),
+                        html.Div([
+                            html.Div(id="optimization-results", 
+                                    style = {'font-size': '14px', 'color':'blue'}),
+                            ], style = cc_style
+                        ),
+
+                        html.Br(),
+                        html.Br(),
+                        html.Div([
+                            html.H3("Pareto Front For Optimized Solutions"),
+                            dcc.Graph(id='pareto-plot', style={'width': '60vh', 'height': '50vh'}),
+                        ]),
+
+                        html.Br(),
+                        html.Div([
+                            html.H3("All Solutions"),
+                            dcc.Checklist(id='select-all-checklist',
+                                        options=[{'label': 'Select All', 'value': 'select_all'}],
+                                        value=[],
+                            ),
+                            dash_table.DataTable(
+                                id='all-solutions-table',
+                                #columns=[{'name': i, 'id': i} for i in ['Solution_Index', 'n_wt', 'n_csp', 'n_pv', 'n_batt', 'Total_Energy_Cost', 'Total_CO2']],
+                                columns=[{'name': column_name_map.get(i, i), 'id': i} 
+                                        for i in ['Solution_Index', 'n_wt', 'n_csp', 'n_pv', 'n_batt', 'Total_Energy_Cost', 'Total_CO2']],
+                                style_cell={'textAlign': 'left', 'font-size': '12px'},
+                                style_table={'height': '250px', 'overflowY': 'auto'},
+                                row_selectable='multi',
+                                selected_rows=[],
+                                sort_action='native',
+                                sort_mode='single',
+                            )
+                        ])
+                    
+                    ]
+            ),
+
+            
+            html.Br(),
+            html.Button('Show Details', 
+                        id='get-results-button', 
+                        style=aux_button_style,
+                        n_clicks=0),
+            
+            html.Br(),
+            html.Br(),
+            html.Div(id='selected-solutions-results', style = {'font-size': '14px','color':'blue'}),
+
+            html.Br(),
+            html.Br(),
+            html.Div([
+                html.H4(f"Detailed Results for Selected Solutions"),
+                dash_table.DataTable(
+                    id='selected-solutions-table',
+                    columns=[],  # We'll set this dynamically in the callback
+                    style_cell={'textAlign': 'left', 'font-size': '12px'},
+                    style_table={'overflowX': 'auto'},
+                    sort_action='native',
+                    sort_mode='single'
+                )
+            ]),
+
+            html.Br(),
+            html.Button('Download Results', 
+                        id='download-button', 
+                        style=aux_button_style, 
+                        n_clicks=0),
+
+            dcc.Download(id='download-results'),
+
+            html.Br(),
+            html.Br(),
+            html.Br(),
+            html.Br()
+
+    ],
+        style=tab_style,
+        selected_style=tab_selected_style
+    ),
+
+    dcc.Tab(label='Weather Forecast', children=[
+
+
+        #html.Div(className="four columns", children=[
 
         dbc.Row([
-            html.Div([
-                html.H4('Scenario'),
-                dbc.Col(dcc.Dropdown(id='scenario-dropdown', 
-                                    style=dd_style,
-                                    options=[{'label': 'Battery Usage', 'value': 'battery'}, 
-                                             {'label': 'Utility Usage', 'value': 'utility'}
-                                            ], 
-                                            value='utility')
-                        ),
-            ]),
 
             html.Div([
-                html.H4('RE Sources'),
-                dbc.Col(dcc.Dropdown(id='re-sources-dropdown', 
-                                    style=dd_style,
-                                    options=[
-                                        {'label': 'All (WT, PV, CSP)', 'value': 'all'},
-                                        {'label': 'WT and PV', 'value': 'wt_pv'},
-                                        {'label': 'WT and CSP', 'value': 'wt_csp'},
-                                        {'label': 'PV and CSP', 'value': 'pv_csp'}
-                                    ],
-                                    value='all')
-                        ),
-            ]),
-
-            html.Div([
-                html.H4('Time Granularity'),
+                html.H4('Location'),
                 dbc.Col(dcc.Dropdown(
-                    id='time-granularity-dropdown', 
-                    style=dd_style,
+                    id='location-dropdown',
                     options=[
-                        {'label': 'Daily', 'value': 'daily'},
-                        {'label': 'Hourly', 'value': 'hourly'}
+                        {"label": "Tampa (27.960981, -82.345212)", "value": "loc0"},
+                        {"label": "Location 1 (37.505290, -121.960910)", "value": "loc1"},
+                        {"label": "Location 2 (29.458136, -98.479810)", "value": "loc2"},
+                        {"label": "Location 3 (31.804775, -106.327605)", "value": "loc3"},
+                        {"label": "Location 5 (41.184520, -73.802961)", "value": "loc4"},
+                        
                     ],
-                    value='daily'
+                    value='loc0',
+                    style=dd_style2
                 )),
             ]),
 
             html.Div([
-                html.H4('RE Use: Min'),
-                dbc.Col(dcc.Dropdown(id='re-min', 
-                                    style=dd_style,
-                                    options=[0,0.25,0.5,0.99], 
-                                    value= 0.5)),
-            ]),
+                html.H4('Forecast Years'),
+                dbc.Col(dcc.Dropdown(
+                    id='forecast-years-dropdown',
+                    options=[
+                        {'label': f'{i} years', 'value': i} for i in range(1, 6)
+                    ],
+                    value=1,
+                    style=dd_style2
+                )),
 
-            html.Div([
-                html.H4('RE Use: Max'),
-                dbc.Col(dcc.Dropdown(id='re-max', 
-                                    style=dd_style,
-                                    options=[0.25,0.5,1.0], 
-                                    value= 1.0)),
-            ]),
+            ])
+        ], style={'display': 'flex', 'justifyContent': 'center'}), 
+        #]),
 
-            html.Div([
-                html.H4('Number of generations'),
-                dbc.Col(dcc.Dropdown(id='num-gen', 
-                                    style=dd_style,
-                                    options=[25, 50, 100, 200], 
-                                    value= 25)),
-            ]),
+        html.Br(),
+        html.Br(),
+        html.Div([
+            html.Button('Get Predictions', 
+                        id='forecast-button', 
+                        style=main_button_style,
+                        n_clicks=0),
+            ], style  = cc_style
+        ),
 
-        ], style={'display': 'flex', 'justifyContent': 'center'}), #'space-between'
-    ]),
-    
-    html.Br(),
-    html.Br(),
-    html.Br(),
-    dcc.Loading(
-            id="loading",
-            type='default', #"circle",
+        html.Br(),
+        html.Div([
+            html.Div(id='forecast-status', style={'font-size': '14px', 'color': 'blue'}),
+        ], style=cc_style),
+
+        dcc.Loading(
+            id="forecast-loading",
+            type='default',
             children=[
-
                 html.Div([
-                    html.Div(id="loading-output", 
-                            style = {'font-size': '16px', 'color':'blue'}),
-                    ], style = cc_style
-                ),
-
+                    html.Div(id='forecast-results'),
+                ], style=cc_style),
+                html.Div([
+                    dcc.Graph(id='forecast-plot')
+                ], style=cc_style),
+                # Add Store button after plots
                 html.Br(),
                 html.Div([
-                    html.Button('Run Optimization', 
-                                id='run-button', 
-                                style={'background-color': 'darkorange', 
-                                    'font-size': '12px', 
-                                    'padding': '10px 20px',  # Add some padding for better appearance
-                                    'border': 'none',  # Remove default border
-                                    'cursor': 'pointer',  # Change cursor on hover
-                                    'border-radius': '5px',  # Rounded corners                                 
-                                    }, 
-                                n_clicks=0),
-                    ], style  = cc_style
-                ),
-
-                html.Br(),
-                html.Div([
-                    html.Div(id="optimization-results", 
-                            style = {'font-size': '14px', 'color':'blue'}),
-                    ], style = cc_style
-                ),
-
-                html.Br(),
-                html.Br(),
-                html.Div([
-                    html.H3("Pareto Front For Optimized Solutions"),
-                    dcc.Graph(id='pareto-plot', style={'width': '60vh', 'height': '50vh'}),
-                ]),
-
-                html.Br(),
-                html.Div([
-                    html.H3("All Solutions"),
-                    dcc.Checklist(id='select-all-checklist',
-                                  options=[{'label': 'Select All', 'value': 'select_all'}],
-                                  value=[],
+                    html.Button(
+                        'Store Forecast',
+                        id='store-forecast-button',
+                        style=aux_button_style,
+                        n_clicks=0
                     ),
-                    dash_table.DataTable(
-                        id='all-solutions-table',
-                        #columns=[{'name': i, 'id': i} for i in ['Solution_Index', 'n_wt', 'n_csp', 'n_pv', 'n_batt', 'Total_Energy_Cost', 'Total_CO2']],
-                        columns=[{'name': column_name_map.get(i, i), 'id': i} 
-                                 for i in ['Solution_Index', 'n_wt', 'n_csp', 'n_pv', 'n_batt', 'Total_Energy_Cost', 'Total_CO2']],
-                        style_cell={'textAlign': 'left', 'font-size': '12px'},
-                        style_table={'height': '250px', 'overflowY': 'auto'},
-                        row_selectable='multi',
-                        selected_rows=[],
-                        sort_action='native',
-                        sort_mode='single',
-                    )
-                ])
-            
+                ], style=cc_style),
+                dcc.Download(id='download-forecast')
             ]
-    ),
-
-    
-    html.Br(),
-    html.Button('Show Details', 
-                id='get-results-button', 
-                style={'background-color': 'darkorange', 'font-size': '12px'},
-                n_clicks=0),
-    
-    html.Br(),
-    html.Br(),
-    html.Div(id='selected-solutions-results', style = {'font-size': '14px','color':'blue'}),
-
-    html.Br(),
-    html.Br(),
-    html.Div([
-        html.H4(f"Detailed Results for Selected Solutions"),
-        dash_table.DataTable(
-            id='selected-solutions-table',
-            columns=[],  # We'll set this dynamically in the callback
-            style_cell={'textAlign': 'left', 'font-size': '12px'},
-            style_table={'overflowX': 'auto'},
-            sort_action='native',
-            sort_mode='single'
         )
-    ]),
 
-    html.Br(),
-    html.Button('Download Results', 
-                id='download-button', 
-                style={'background-color': 'darkorange', 'font-size': '12px'}, 
-                n_clicks=0),
+    ],
+        style=tab_style,
+        selected_style=tab_selected_style
+    )
 
-    dcc.Download(id='download-results'),
-
-    html.Br(),
-    html.Br(),
-    html.Br(),
-    html.Br()
+  ])
 
 ], fluid=True)
+
+@app.callback(
+    Output('download-forecast', 'data'),
+    Input('store-forecast-button', 'n_clicks'),
+    State('forecast-results', 'children'),
+    prevent_initial_call=True
+)
+def store_forecast(n_clicks, forecast_results):
+    if n_clicks == 0 or not forecast_results:
+        return None
+        
+    if 'stored_forecasts' not in globals():
+        return None
+        
+    forecasts = stored_forecasts
+    
+    # Combine weather forecasts into a single DataFrame
+    df = pd.DataFrame({
+        'datetime': forecasts['temp_diff']['datetime'],
+        'temperature': forecasts['temp_diff']['abs_pred'],
+        'dni': forecasts['dni_diff']['abs_pred'],
+        'wind_speed': forecasts['wind_speed_diff']['abs_pred']
+    })
+    
+    # Calculate RE production
+    df_with_re = calculate_re_production(df)
+    
+    # Add simple statistics to results_div
+    stats_div = html.Div([
+        html.H4('Average Power Production per Unit:'),
+        html.Ul([
+            html.Li(f"PV Panel: {df_with_re['Ppv'].mean():.2f} kW"),
+            html.Li(f"Wind Turbine: {df_with_re['Pw'].mean():.2f} kW"),
+            html.Li(f"CSP Unit: {df_with_re['Pcs'].mean():.2f} kW")
+        ])
+    ])
+    
+    return dcc.send_data_frame(df_with_re.to_csv, "weather_and_re_forecast.csv", index=False)
+
+@app.callback(
+    [Output('forecast-status', 'children'),
+     Output('forecast-results', 'children'),
+     Output('forecast-plot', 'figure')],
+    [Input('forecast-button', 'n_clicks')],
+    [State('location-dropdown', 'value'),
+     State('forecast-years-dropdown', 'value')]
+)
+def update_forecast(n_clicks, location, forecast_years):
+
+    global stored_forecasts
+
+    if n_clicks == 0:
+        return "Select location and forecast period, then click 'Get Predictions'.", None, {}
+
+    # Location coordinates mapping
+    location_coords = {
+        'loc0': (27.960981, -82.345212),
+        'loc1': (37.505290, -121.960910),
+        'loc2': (29.458136, -98.479810),
+        'loc3': (31.804775, -106.327605),
+        'loc4': (41.184520, -73.802961)
+    }
+
+    lat, lon = location_coords[location]
+    
+    # Initialize WeatherForecast
+    wf = WeatherForecast()
+    
+    # Fetch historical data (last 3 years)
+    years = list(range(2020, 2023))
+    success = wf.fetch_data(years, lat, lon)
+    
+    if not success:
+        return "Error fetching weather data. Please try again.", None, {}
+
+    # Make forecasts for temperature, DNI, and wind speed
+    forecasts = {}
+    for target in ['temp_diff', 'dni_diff', 'wind_speed_diff']:
+        forecasts[target] = wf.make_forecast(target, n_years=forecast_years, plot=False)
+        
+        # Convert DNI from W/m² to kWh/m²/hr
+        if target == 'dni_diff':
+            forecasts[target]['abs_pred'] = forecasts[target]['abs_pred'] / 1000  # Convert W/m² to kW/m²
+            forecasts[target]['abs_pred'] = forecasts[target]['abs_pred']  # Already per hour
+
+    # Create subplot figure
+    fig = make_subplots(
+        rows=3, 
+        cols=1,
+        subplot_titles=('Temperature Forecast', 
+                       'Direct Normal Irradiance (DNI) Forecast',
+                       'Wind Speed Forecast'),
+        vertical_spacing=0.12,
+        specs=[[{"secondary_y": False}],
+               [{"secondary_y": False}],
+               [{"secondary_y": False}]],
+        row_heights=[0.33, 0.33, 0.33]
+    )
+
+    # Update y-axis labels with correct units
+    forecast_units = {
+        'temp_diff': '°C',
+        'dni_diff': 'kWh/m^2/hr',
+        'wind_speed_diff': 'm/s'
+    }
+
+    # Add each forecast to its own subplot
+    for idx, (target, data) in enumerate(forecasts.items(), 1):
+        fig.add_trace(
+            go.Scatter(
+                x=data['datetime'],
+                y=data['abs_pred'],
+                name=f'{target.replace("_diff", "")} forecast'
+            ),
+            row=idx, 
+            col=1
+        )
+
+    # Update layout
+    fig.update_layout(
+        height=1100,  # Fixed height
+        width=1000,   # Fixed width
+        showlegend=False,
+        title_text=f"Weather Forecasts for Location {location}",
+        title_x=0.5,
+        margin=dict(t=100, b=50, l=80, r=20),
+        autosize=False,  # Disable autosize
+        template='plotly_white'
+    )
+    
+    # Update y-axes labels with correct units
+    fig.update_yaxes(title_text="Temperature (°C)", row=1, col=1)
+    fig.update_yaxes(title_text="DNI (kWh/m^2/hr)", row=2, col=1)
+    fig.update_yaxes(title_text="Wind Speed (m/s)", row=3, col=1)
+    
+    # Update x-axes labels
+    fig.update_xaxes(title_text="Date", row=3, col=1)
+
+    # Create results summary
+    results_div = html.Div([
+        html.H3('Forecast Summary'),
+        html.Div([
+            html.P(f"Location: {location} ({lat}, {lon})"),
+            html.P(f"Forecast Period: {forecast_years} years"),
+            html.H4('Average Values:'),
+            html.Ul([
+                html.Li(f"Temperature: {forecasts['temp_diff']['abs_pred'].mean():.2f}°C"),
+                html.Li(f"DNI: {forecasts['dni_diff']['abs_pred'].mean():.4f} kWh/m^2/hr"),  # More decimal places for DNI
+                html.Li(f"Wind Speed: {forecasts['wind_speed_diff']['abs_pred'].mean():.2f} m/s")
+            ])
+        ])
+    ])
+
+    # Store forecasts globally before returning
+    stored_forecasts = forecasts
+
+    return "Forecast generated successfully!", results_div, fig
 
 
 
@@ -584,4 +772,4 @@ def process_input_data(re_data, demand_data, time_granularity):
     return data_m.dropna()
 
 if __name__ == '__main__':
-    app.run_server(debug=True, port='8080',host='0.0.0.0')
+    app.run_server(debug=True, port='8080') #,host='0.0.0.0')
